@@ -21,7 +21,7 @@ void setup() {
   pinMode(Bin1, OUTPUT);
   pinMode(Bin2, OUTPUT);
 
-  // OLD ESP32 PWM setup (THIS IS THE CORRECT ONE FOR YOU)
+  // PWM setup
   ledcSetup(channelA, 1000, 8);
   ledcSetup(channelB, 1000, 8);
 
