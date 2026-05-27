@@ -1,52 +1,96 @@
-#include <Arduino.h>
+#define CUSTOM_SETTINGS
+#define INCLUDE_GAMEPAD_MODULE
+#include <DabbleESP32.h>
 
-// Motor A
-const int pwmA = 4;
-const int Ain1 = 5;
-const int Ain2 = 6;
+#define A_IN_1 5
+#define A_IN_2 6
+#define PWM_A 4
+#define CHANNEL_A 0
 
-// Motor B
-const int pwmB = 7;
-const int Bin1 = 15;
-const int Bin2 = 16;
+#define B_IN_1 15
+#define B_IN_2 16
+#define PWM_B 7
+#define CHANNEL_B 1
 
-// PWM channels
-const int channelA = 0;
-const int channelB = 1;
+#define FREQ 1000
+#define RESOLUTION 8
+
+void init_logs();
+void adjust_speed();
+void full_stop();
+void move_forward();
+void move_backward();
 
 void setup() {
+    init_logs();
 
-  pinMode(Ain1, OUTPUT);
-  pinMode(Ain2, OUTPUT);
-  pinMode(Bin1, OUTPUT);
-  pinMode(Bin2, OUTPUT);
+    // Init output pins
+    pinMode(A_IN_1, OUTPUT);
+    pinMode(A_IN_2, OUTPUT);
+    pinMode(B_IN_1, OUTPUT);
+    pinMode(B_IN_2, OUTPUT);
 
-  // PWM setup
-  ledcSetup(channelA, 1000, 8);
-  ledcSetup(channelB, 1000, 8);
+    // PWM setup
+    ledcSetup(CHANNEL_A, FREQ, RESOLUTION);
+    ledcSetup(CHANNEL_B, FREQ, RESOLUTION);
 
-  ledcAttachPin(pwmA, channelA);
-  ledcAttachPin(pwmB, channelB);
-
-  // Forward direction
-  digitalWrite(Ain1, HIGH);
-  digitalWrite(Ain2, LOW);
-
-  digitalWrite(Bin1, HIGH);
-  digitalWrite(Bin2, LOW);
+    ledcAttachPin(PWM_A, CHANNEL_A);
+    ledcAttachPin(PWM_B, CHANNEL_B);
+    
+    // Set bluetooth name of your device
+    Dabble.begin("S3-Mobile-Pad"); 
 }
 
 void loop() {
+  // Refresh data obtained from smartphone. Calling this function is mandatory in order to get data properly from your mobile.
+  Dabble.processInput();
 
-  // START full speed
-  ledcWrite(channelA, 255);
-  ledcWrite(channelB, 255);
+  if (GamePad.isUpPressed()) {
+    move_forward();
+    Serial.println("Forward");
+  }
 
-  delay(3000);
+  if (GamePad.isDownPressed()) {
+    move_backward();
+    Serial.println("Rear");
+  }
 
-  // STOP
-  ledcWrite(channelA, 0);
-  ledcWrite(channelB, 0);
+  delay(20); 
+}
 
-  delay(3000);
+void init_logs() {
+  Serial.begin(115200);
+  delay(1000);
+
+  Serial.println("Logs init");
+}
+
+void adjust_speed() {
+  ledcWrite(CHANNEL_A, 255);
+  ledcWrite(CHANNEL_B, 255);
+}
+
+void full_stop() {
+  ledcWrite(CHANNEL_A, 0);
+  ledcWrite(CHANNEL_B, 0);
+}
+
+void move_forward() {
+  digitalWrite(A_IN_1, HIGH);
+  digitalWrite(A_IN_2, LOW);
+
+  digitalWrite(B_IN_1, HIGH);
+  digitalWrite(B_IN_2, LOW);
+
+  adjust_speed();
+}
+
+void move_backward() {
+  digitalWrite(A_IN_1, LOW);
+  digitalWrite(A_IN_2, HIGH);
+
+  digitalWrite(B_IN_1, LOW);
+  digitalWrite(B_IN_2, HIGH);
+
+  adjust_speed();
 }
