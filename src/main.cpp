@@ -14,12 +14,15 @@
 
 #define FREQ 1000
 #define RESOLUTION 8
+#define MAX_DUTY 255
+
+#define MAX_CONTROL_VALUE 8
 
 void init_logs();
-void adjust_speed();
+void adjust_speed(int speed);
 void full_stop();
-void move_forward();
-void move_backward();
+void move_forward(int speed);
+void move_backward(int speed);
 
 void setup() {
     init_logs();
@@ -45,14 +48,21 @@ void loop() {
   // Refresh data obtained from smartphone. Calling this function is mandatory in order to get data properly from your mobile.
   Dabble.processInput();
 
-  if (GamePad.isUpPressed()) {
-    move_forward();
+  int direction = GamePad.getAngle(); // 60-120 forward, 240-300 backward
+  int speed = (MAX_DUTY / MAX_CONTROL_VALUE) * GamePad.getRadius();
+
+  if (direction >= 60 && direction <= 120) {
+    move_forward(speed);
     Serial.println("Forward");
   }
 
-  if (GamePad.isDownPressed()) {
-    move_backward();
+  if (direction >= 240 && direction <= 300) {
+    move_backward(speed);
     Serial.println("Rear");
+  }
+
+  if (direction == 0) {
+    full_stop();
   }
 
   delay(20); 
@@ -65,9 +75,9 @@ void init_logs() {
   Serial.println("Logs init");
 }
 
-void adjust_speed() {
-  ledcWrite(CHANNEL_A, 255);
-  ledcWrite(CHANNEL_B, 255);
+void adjust_speed(int speed) {
+  ledcWrite(CHANNEL_A, speed);
+  ledcWrite(CHANNEL_B, speed);
 }
 
 void full_stop() {
@@ -75,22 +85,22 @@ void full_stop() {
   ledcWrite(CHANNEL_B, 0);
 }
 
-void move_forward() {
+void move_forward(int speed) {
   digitalWrite(A_IN_1, HIGH);
   digitalWrite(A_IN_2, LOW);
 
   digitalWrite(B_IN_1, HIGH);
   digitalWrite(B_IN_2, LOW);
 
-  adjust_speed();
+  adjust_speed(speed);
 }
 
-void move_backward() {
+void move_backward(int speed) {
   digitalWrite(A_IN_1, LOW);
   digitalWrite(A_IN_2, HIGH);
 
   digitalWrite(B_IN_1, LOW);
   digitalWrite(B_IN_2, HIGH);
 
-  adjust_speed();
+  adjust_speed(speed);
 }
