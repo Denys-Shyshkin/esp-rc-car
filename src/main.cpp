@@ -1,6 +1,14 @@
 #define CUSTOM_SETTINGS
 #define INCLUDE_GAMEPAD_MODULE
 #include <DabbleESP32.h>
+#include <WiFi.h>
+#include "secrets.h"
+
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASS;
+
+WiFiServer telnetServer(23);
+WiFiClient telnetClient;
 
 #define A_IN_1 5
 #define A_IN_2 6
@@ -24,8 +32,11 @@ const int set_control_value = MAX_CONTROL_VALUE / MAX_SPEED_PERCENTAGE;
 int prev_speed = 0;
 char* direction_name = "STOP";
 
-void init_logs();
+void init_serial();
+void init_telnet_server();
 
+void telnet_server();
+void logging(const char* fmt, ...);
 void adjust_speed(int speed);
 void slow_braking(int speed);
 void full_stop();
@@ -36,26 +47,29 @@ void turn_right(int speed);
 void turn_left(int speed);
 
 void setup() {
-    init_logs();
+  init_serial();
+  init_telnet_server();
 
-    // Init output pins
-    pinMode(A_IN_1, OUTPUT);
-    pinMode(A_IN_2, OUTPUT);
-    pinMode(B_IN_1, OUTPUT);
-    pinMode(B_IN_2, OUTPUT);
+  // Init output pins
+  pinMode(A_IN_1, OUTPUT);
+  pinMode(A_IN_2, OUTPUT);
+  pinMode(B_IN_1, OUTPUT);
+  pinMode(B_IN_2, OUTPUT);
 
-    // PWM setup
-    ledcSetup(CHANNEL_A, FREQ, RESOLUTION);
-    ledcSetup(CHANNEL_B, FREQ, RESOLUTION);
+  // PWM setup
+  ledcSetup(CHANNEL_A, FREQ, RESOLUTION);
+  ledcSetup(CHANNEL_B, FREQ, RESOLUTION);
 
-    ledcAttachPin(PWM_A, CHANNEL_A);
-    ledcAttachPin(PWM_B, CHANNEL_B);
-    
-    // Set bluetooth name of your device
-    Dabble.begin("S3-Mobile-Pad"); 
+  ledcAttachPin(PWM_A, CHANNEL_A);
+  ledcAttachPin(PWM_B, CHANNEL_B);
+  
+  // Set bluetooth name of your device
+  Dabble.begin("S3-Mobile-Pad"); 
 }
 
 void loop() {
+  telnet_server();
+  
   // Refresh data obtained from smartphone. Calling this function is mandatory in order to get data properly from your mobile.
   Dabble.processInput();
 
@@ -90,21 +104,66 @@ void loop() {
     speed = 0;
   }
 
-  Serial.print("Speed: ");
-  Serial.print(speed);
-  Serial.print(" | Direction: ");
-  Serial.println(direction_name);
+  logging("Speed: %d | Direction: %s", speed, direction_name);
 
   prev_speed = speed;
-
-  delay(20); 
 }
 
-void init_logs() {
+void init_serial() {
   Serial.begin(115200);
   delay(1000);
 
   Serial.println("Logs init");
+}
+
+void init_telnet_server() {
+  WiFi.begin(ssid, password);
+
+  Serial.print("Connecting");
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println();
+  Serial.println("Connected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP()); // 192.168.0.188
+
+  telnetServer.begin();
+  telnetServer.setNoDelay(true);
+}
+
+void telnet_server() {
+  if (telnetServer.hasClient()) {
+    if (!telnetClient || !telnetClient.connected()) {
+      if (telnetClient) {
+        telnetClient.stop();
+      } else {
+        telnetClient = telnetServer.available();
+        telnetClient.println("Connected to ESP32");
+      }
+    }
+    else {
+      telnetServer.available().stop();
+    }
+  }
+}
+
+void logging(const char* fmt, ...) {
+  char buffer[128];
+
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buffer, sizeof(buffer), fmt, args);
+  va_end(args);
+
+  Serial.println(buffer);
+
+  if (telnetClient && telnetClient.connected()) {
+    telnetClient.println(buffer);
+  }
 }
 
 void adjust_speed(int speed) {
