@@ -30,7 +30,6 @@ WiFiClient telnetClient;
 const int set_control_value = MAX_CONTROL_VALUE / MAX_SPEED_PERCENTAGE;
 
 int prev_speed = 0;
-char* direction_name = "STOP";
 
 void init_serial();
 void init_telnet_server();
@@ -41,10 +40,10 @@ void adjust_speed(int speed);
 void slow_braking(int speed);
 void full_stop();
 
-void move_forward(int speed);
-void move_backward(int speed);
-void turn_right(int speed);
-void turn_left(int speed);
+void move_forward();
+void move_backward();
+void turn_right();
+void turn_left();
 
 void setup() {
   init_serial();
@@ -79,32 +78,29 @@ void loop() {
   
   if (radius > 0) {
     if (direction >= 60 && direction <= 120) {
-      move_forward(speed);
-      direction_name= "FORWARD";
+      move_forward();
     }
   
     if (direction >= 150 && direction <= 210) {
-      turn_right(speed);
-      direction_name= "RIGHT";
+      turn_left();
     }
-  
+    
     if (direction >= 240 && direction <= 300) {
-      move_backward(speed);
-      direction_name= "BACKWARD";
+      move_backward();
     }
-  
+    
     if (direction >= 330 && direction <= 360 || direction >= 0 && direction <= 30) {
-      turn_left(speed);
-      direction_name= "LEFT";
+      turn_right();
     }
   } else if (prev_speed != 0) {
     slow_braking(speed);
-    direction_name= "STOP";
 
     speed = 0;
   }
 
-  logging("Speed: %d | Direction: %s", speed, direction_name);
+  adjust_speed(speed);
+
+  logging("Direction: %d", direction);
 
   prev_speed = speed;
 }
@@ -174,10 +170,6 @@ void adjust_speed(int speed) {
 void slow_braking(int speed) {
   for (int i = speed; i > 0; i -= 2) {
     adjust_speed(i);
-    
-    Serial.print("Speed: ");
-    Serial.print(i);
-    Serial.println(" | Direction: BRAKING");
 
     delay(10);
   }
@@ -188,42 +180,34 @@ void full_stop() {
   ledcWrite(CHANNEL_B, 0);
 }
 
-void move_forward(int speed) {
-  digitalWrite(A_IN_1, HIGH);
-  digitalWrite(A_IN_2, LOW);
-
-  digitalWrite(B_IN_1, HIGH);
-  digitalWrite(B_IN_2, LOW);
-
-  adjust_speed(speed);
-}
-
-void move_backward(int speed) {
+void move_forward() {
   digitalWrite(A_IN_1, LOW);
   digitalWrite(A_IN_2, HIGH);
 
   digitalWrite(B_IN_1, LOW);
   digitalWrite(B_IN_2, HIGH);
-
-  adjust_speed(speed);
 }
 
-void turn_right(int speed) {
+void move_backward() {
   digitalWrite(A_IN_1, HIGH);
   digitalWrite(A_IN_2, LOW);
 
-  digitalWrite(B_IN_1, LOW);
-  digitalWrite(B_IN_2, HIGH);
-
-  adjust_speed(speed);
+  digitalWrite(B_IN_1, HIGH);
+  digitalWrite(B_IN_2, LOW);
 }
 
-void turn_left(int speed) {
+void turn_right() {
   digitalWrite(A_IN_1, LOW);
   digitalWrite(A_IN_2, HIGH);
 
   digitalWrite(B_IN_1, HIGH);
   digitalWrite(B_IN_2, LOW);
+}
 
-  adjust_speed(speed);
+void turn_left() {
+  digitalWrite(A_IN_1, HIGH);
+  digitalWrite(A_IN_2, LOW);
+
+  digitalWrite(B_IN_1, LOW);
+  digitalWrite(B_IN_2, HIGH);
 }
