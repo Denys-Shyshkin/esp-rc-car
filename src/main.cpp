@@ -132,6 +132,10 @@ void init_telnet_server() {
 }
 
 void telnet_server() {
+  // on macos terminal commnand
+  // nc {local ip address} {port}
+  // e.g. nc 192.168.0.188 23
+
   if (telnetServer.hasClient()) {
     if (!telnetClient || !telnetClient.connected()) {
       if (telnetClient) {
@@ -197,17 +201,17 @@ void move_backward() {
 }
 
 void turn_right() {
-  digitalWrite(A_IN_1, LOW);
-  digitalWrite(A_IN_2, HIGH);
-
-  digitalWrite(B_IN_1, HIGH);
-  digitalWrite(B_IN_2, LOW);
-}
-
-void turn_left() {
   digitalWrite(A_IN_1, HIGH);
   digitalWrite(A_IN_2, LOW);
 
   digitalWrite(B_IN_1, LOW);
   digitalWrite(B_IN_2, HIGH);
+}
+
+void turn_left() {
+  digitalWrite(A_IN_1, LOW);
+  digitalWrite(A_IN_2, HIGH);
+
+  digitalWrite(B_IN_1, HIGH);
+  digitalWrite(B_IN_2, LOW);
 }
