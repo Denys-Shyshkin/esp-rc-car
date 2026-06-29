@@ -31,14 +31,18 @@ const int set_control_value = MAX_CONTROL_VALUE / MAX_SPEED_PERCENTAGE;
 
 int prev_speed = 0;
 
+int startup_notes[4] = {330, 440, 554, 659};   // E4, A4, C#5, E5
+int note_durations[4] = {150, 150, 150, 300};  // Duration in milliseconds
+
 void init_serial();
 void init_telnet_server();
 
 void telnet_server();
 void logging(const char* fmt, ...);
-void adjust_speed(int speed);
+void adjust_speed(int speed_a, int speed_b);
 void slow_braking(int speed);
 void full_stop();
+void play_startup_tone();
 
 void move_forward();
 void move_backward();
@@ -64,6 +68,8 @@ void setup() {
   
   // Set bluetooth name of your device
   Dabble.begin("S3-Mobile-Pad"); 
+
+  play_startup_tone();
 }
 
 void loop() {
@@ -77,28 +83,50 @@ void loop() {
   int speed = radius != 0 ? (MAX_DUTY / set_control_value) * radius : prev_speed;
   
   if (radius > 0) {
-    if (direction >= 60 && direction <= 120) {
+    if (direction >= 20 && direction < 70) {
       move_forward();
+      adjust_speed(speed / 2, speed);
+    }
+
+    if (direction >= 70 && direction < 110) {
+      move_forward();
+      adjust_speed(speed, speed);
+    }
+
+    if (direction >= 110 && direction < 160) {
+      move_forward();
+      adjust_speed(speed, speed / 2);
     }
   
-    if (direction >= 150 && direction <= 210) {
+    if (direction >= 160 && direction < 200) {
       turn_left();
+      adjust_speed(speed, speed);
     }
     
-    if (direction >= 240 && direction <= 300) {
+    if (direction >= 200 && direction < 250) {
       move_backward();
+      adjust_speed(speed, speed / 2);
     }
-    
-    if (direction >= 330 && direction <= 360 || direction >= 0 && direction <= 30) {
+
+    if (direction >= 250 && direction < 290) {
+      move_backward();
+      adjust_speed(speed, speed);
+    }
+
+    if (direction >= 290 && direction < 340) {
+      move_backward();
+      adjust_speed(speed / 2, speed);
+    }
+
+    if (direction > 340 && direction <= 360 || direction >= 0 && direction < 20) {
       turn_right();
+      adjust_speed(speed, speed);
     }
   } else if (prev_speed != 0) {
     slow_braking(speed);
 
     speed = 0;
   }
-
-  adjust_speed(speed);
 
   logging("Direction: %d", direction);
 
@@ -166,14 +194,14 @@ void logging(const char* fmt, ...) {
   }
 }
 
-void adjust_speed(int speed) {
-  ledcWrite(CHANNEL_A, speed);
-  ledcWrite(CHANNEL_B, speed);
+void adjust_speed(int speed_a, int speed_b) {
+  ledcWrite(CHANNEL_A, speed_a);
+  ledcWrite(CHANNEL_B, speed_b);
 }
 
 void slow_braking(int speed) {
   for (int i = speed; i > 0; i -= 2) {
-    adjust_speed(i);
+    adjust_speed(i, i);
 
     delay(10);
   }
@@ -214,4 +242,35 @@ void turn_left() {
 
   digitalWrite(B_IN_1, HIGH);
   digitalWrite(B_IN_2, LOW);
+}
+
+void play_startup_tone() {
+  int volume = 50; 
+
+  digitalWrite(A_IN_1, HIGH);
+  digitalWrite(A_IN_2, LOW);
+
+  digitalWrite(B_IN_1, HIGH);
+  digitalWrite(B_IN_2, LOW);
+
+  for (int i = 0; i < 4; i++) {
+    ledcWriteTone(CHANNEL_A, startup_notes[i]);
+    ledcWriteTone(CHANNEL_B, startup_notes[i]);
+    
+    ledcWrite(CHANNEL_A, volume);
+    ledcWrite(CHANNEL_B, volume);
+    
+    delay(note_durations[i]);
+    
+    ledcWrite(CHANNEL_A, 0);
+    ledcWrite(CHANNEL_B, 0);
+
+    delay(30);
+  }
+
+  full_stop();
+  delay(50);
+
+  ledcSetup(CHANNEL_A, FREQ, 8);
+  ledcSetup(CHANNEL_B, FREQ, 8); 
 }
