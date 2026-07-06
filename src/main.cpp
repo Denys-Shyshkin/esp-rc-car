@@ -1,11 +1,12 @@
 #define CUSTOM_SETTINGS
 #define INCLUDE_GAMEPAD_MODULE
-#include <DabbleESP32.h>
-#include <WiFi.h>
 #include "secrets.h"
+#include <DabbleESP32.h>
+#include <NewPing.h>
+#include <WiFi.h>
 
-const char* ssid = WIFI_SSID;
-const char* password = WIFI_PASS;
+const char *ssid = WIFI_SSID;
+const char *password = WIFI_PASS;
 
 WiFiServer telnetServer(23);
 WiFiClient telnetClient;
@@ -20,6 +21,9 @@ WiFiClient telnetClient;
 #define PWM_B 7
 #define CHANNEL_B 1
 
+#define TRIGGER 14
+#define ECHO 13
+
 #define FREQ 1000
 #define RESOLUTION 8
 #define MAX_DUTY 255
@@ -29,20 +33,25 @@ WiFiClient telnetClient;
 
 const int set_control_value = MAX_CONTROL_VALUE / MAX_SPEED_PERCENTAGE;
 
-int prev_speed = 0;
+int startup_notes[4] = {330, 440, 554, 659};  // E4, A4, C#5, E5
+int note_durations[4] = {150, 150, 150, 300}; // Duration in milliseconds
 
-int startup_notes[4] = {330, 440, 554, 659};   // E4, A4, C#5, E5
-int note_durations[4] = {150, 150, 150, 300};  // Duration in milliseconds
+uint32_t last_trigger = 0;
+uint16_t trigger_delay = 50;
+int distance_to_speed_multiplier = 3;
+bool is_obstacle_detected = false;
+
+NewPing sonar(TRIGGER, ECHO);
 
 void init_serial();
 void init_telnet_server();
 
 void telnet_server();
-void logging(const char* fmt, ...);
+void logging(const char *fmt, ...);
 void adjust_speed(int speed_a, int speed_b);
-void slow_braking(int speed);
 void full_stop();
 void play_startup_tone();
+void obstacle_detection(int direction, int radius);
 
 void move_forward();
 void move_backward();
@@ -50,227 +59,237 @@ void turn_right();
 void turn_left();
 
 void setup() {
-  init_serial();
-  init_telnet_server();
+    init_serial();
+    init_telnet_server();
 
-  // Init output pins
-  pinMode(A_IN_1, OUTPUT);
-  pinMode(A_IN_2, OUTPUT);
-  pinMode(B_IN_1, OUTPUT);
-  pinMode(B_IN_2, OUTPUT);
+    // Init output pins
+    pinMode(A_IN_1, OUTPUT);
+    pinMode(A_IN_2, OUTPUT);
+    pinMode(B_IN_1, OUTPUT);
+    pinMode(B_IN_2, OUTPUT);
 
-  // PWM setup
-  ledcSetup(CHANNEL_A, FREQ, RESOLUTION);
-  ledcSetup(CHANNEL_B, FREQ, RESOLUTION);
+    // PWM setup
+    ledcSetup(CHANNEL_A, FREQ, RESOLUTION);
+    ledcSetup(CHANNEL_B, FREQ, RESOLUTION);
 
-  ledcAttachPin(PWM_A, CHANNEL_A);
-  ledcAttachPin(PWM_B, CHANNEL_B);
-  
-  // Set bluetooth name of your device
-  Dabble.begin("S3-Mobile-Pad"); 
+    ledcAttachPin(PWM_A, CHANNEL_A);
+    ledcAttachPin(PWM_B, CHANNEL_B);
 
-  play_startup_tone();
+    // Set bluetooth name of your device
+    Dabble.begin("S3-Mobile-Pad");
+
+    play_startup_tone();
 }
 
 void loop() {
-  telnet_server();
-  
-  // Refresh data obtained from smartphone. Calling this function is mandatory in order to get data properly from your mobile.
-  Dabble.processInput();
+    telnet_server();
 
-  int direction = GamePad.getAngle(); // 60-120 forward, 240-300 backward
-  int radius = GamePad.getRadius(); // 0-7
-  int speed = radius != 0 ? (MAX_DUTY / set_control_value) * radius : prev_speed;
-  
-  if (radius > 0) {
+    // Refresh data obtained from smartphone. Calling this function is mandatory in order to get
+    // data properly from your mobile.
+    Dabble.processInput();
+
+    int direction = GamePad.getAngle(); // 0-360
+    int radius = GamePad.getRadius();   // 0-7
+    int speed = (MAX_DUTY / set_control_value) * radius;
+
+    obstacle_detection(direction, radius);
+
+    if (is_obstacle_detected) {
+        speed = 0;
+    }
+
     if (direction >= 20 && direction < 70) {
-      move_forward();
-      adjust_speed(speed / 2, speed);
+        move_forward();
+        adjust_speed(speed / 2, speed);
     }
 
     if (direction >= 70 && direction < 110) {
-      move_forward();
-      adjust_speed(speed, speed);
+        move_forward();
+        adjust_speed(speed, speed);
     }
 
     if (direction >= 110 && direction < 160) {
-      move_forward();
-      adjust_speed(speed, speed / 2);
+        move_forward();
+        adjust_speed(speed, speed / 2);
     }
-  
+
     if (direction >= 160 && direction < 200) {
-      turn_left();
-      adjust_speed(speed, speed);
+        turn_left();
+        adjust_speed(speed, speed);
     }
-    
+
     if (direction >= 200 && direction < 250) {
-      move_backward();
-      adjust_speed(speed, speed / 2);
+        move_backward();
+        adjust_speed(speed, speed / 2);
     }
 
     if (direction >= 250 && direction < 290) {
-      move_backward();
-      adjust_speed(speed, speed);
+        move_backward();
+        adjust_speed(speed, speed);
     }
 
     if (direction >= 290 && direction < 340) {
-      move_backward();
-      adjust_speed(speed / 2, speed);
+        move_backward();
+        adjust_speed(speed / 2, speed);
     }
 
     if (direction > 340 && direction <= 360 || direction >= 0 && direction < 20) {
-      turn_right();
-      adjust_speed(speed, speed);
+        turn_right();
+        adjust_speed(speed, speed);
     }
-  } else if (prev_speed != 0) {
-    slow_braking(speed);
 
-    speed = 0;
-  }
-
-  logging("Direction: %d", direction);
-
-  prev_speed = speed;
+    // logging("Direction: %d", direction);
 }
 
 void init_serial() {
-  Serial.begin(115200);
-  delay(1000);
+    Serial.begin(115200);
+    delay(1000);
 
-  Serial.println("Logs init");
+    Serial.println("Logs init");
 }
 
 void init_telnet_server() {
-  WiFi.begin(ssid, password);
+    WiFi.begin(ssid, password);
 
-  Serial.print("Connecting");
+    Serial.print("Connecting");
 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
 
-  Serial.println();
-  Serial.println("Connected!");
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP()); // 192.168.0.188
+    Serial.println();
+    Serial.println("Connected!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP()); // 192.168.0.188
 
-  telnetServer.begin();
-  telnetServer.setNoDelay(true);
+    telnetServer.begin();
+    telnetServer.setNoDelay(true);
 }
 
 void telnet_server() {
-  // on macos terminal commnand
-  // nc {local ip address} {port}
-  // e.g. nc 192.168.0.188 23
+    // on macos terminal commnand
+    // nc {local ip address} {port}
+    // e.g. nc 192.168.0.188 23
 
-  if (telnetServer.hasClient()) {
-    if (!telnetClient || !telnetClient.connected()) {
-      if (telnetClient) {
-        telnetClient.stop();
-      } else {
-        telnetClient = telnetServer.available();
-        telnetClient.println("Connected to ESP32");
-      }
+    if (telnetServer.hasClient()) {
+        if (!telnetClient || !telnetClient.connected()) {
+            if (telnetClient) {
+                telnetClient.stop();
+            } else {
+                telnetClient = telnetServer.available();
+                telnetClient.println("Connected to ESP32");
+            }
+        } else {
+            telnetServer.available().stop();
+        }
     }
-    else {
-      telnetServer.available().stop();
-    }
-  }
 }
 
-void logging(const char* fmt, ...) {
-  char buffer[128];
+void logging(const char *fmt, ...) {
+    char buffer[128];
 
-  va_list args;
-  va_start(args, fmt);
-  vsnprintf(buffer, sizeof(buffer), fmt, args);
-  va_end(args);
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
 
-  Serial.println(buffer);
+    Serial.println(buffer);
 
-  if (telnetClient && telnetClient.connected()) {
-    telnetClient.println(buffer);
-  }
+    if (telnetClient && telnetClient.connected()) {
+        telnetClient.println(buffer);
+    }
 }
 
 void adjust_speed(int speed_a, int speed_b) {
-  ledcWrite(CHANNEL_A, speed_a);
-  ledcWrite(CHANNEL_B, speed_b);
-}
-
-void slow_braking(int speed) {
-  for (int i = speed; i > 0; i -= 2) {
-    adjust_speed(i, i);
-
-    delay(10);
-  }
+    ledcWrite(CHANNEL_A, speed_a);
+    ledcWrite(CHANNEL_B, speed_b);
 }
 
 void full_stop() {
-  ledcWrite(CHANNEL_A, 0);
-  ledcWrite(CHANNEL_B, 0);
+    ledcWrite(CHANNEL_A, 0);
+    ledcWrite(CHANNEL_B, 0);
 }
 
 void move_forward() {
-  digitalWrite(A_IN_1, LOW);
-  digitalWrite(A_IN_2, HIGH);
+    digitalWrite(A_IN_1, LOW);
+    digitalWrite(A_IN_2, HIGH);
 
-  digitalWrite(B_IN_1, LOW);
-  digitalWrite(B_IN_2, HIGH);
+    digitalWrite(B_IN_1, LOW);
+    digitalWrite(B_IN_2, HIGH);
 }
 
 void move_backward() {
-  digitalWrite(A_IN_1, HIGH);
-  digitalWrite(A_IN_2, LOW);
+    digitalWrite(A_IN_1, HIGH);
+    digitalWrite(A_IN_2, LOW);
 
-  digitalWrite(B_IN_1, HIGH);
-  digitalWrite(B_IN_2, LOW);
+    digitalWrite(B_IN_1, HIGH);
+    digitalWrite(B_IN_2, LOW);
 }
 
 void turn_right() {
-  digitalWrite(A_IN_1, HIGH);
-  digitalWrite(A_IN_2, LOW);
+    digitalWrite(A_IN_1, HIGH);
+    digitalWrite(A_IN_2, LOW);
 
-  digitalWrite(B_IN_1, LOW);
-  digitalWrite(B_IN_2, HIGH);
+    digitalWrite(B_IN_1, LOW);
+    digitalWrite(B_IN_2, HIGH);
 }
 
 void turn_left() {
-  digitalWrite(A_IN_1, LOW);
-  digitalWrite(A_IN_2, HIGH);
+    digitalWrite(A_IN_1, LOW);
+    digitalWrite(A_IN_2, HIGH);
 
-  digitalWrite(B_IN_1, HIGH);
-  digitalWrite(B_IN_2, LOW);
+    digitalWrite(B_IN_1, HIGH);
+    digitalWrite(B_IN_2, LOW);
 }
 
 void play_startup_tone() {
-  int volume = 50; 
+    int volume = 50;
 
-  digitalWrite(A_IN_1, HIGH);
-  digitalWrite(A_IN_2, LOW);
+    digitalWrite(A_IN_1, HIGH);
+    digitalWrite(A_IN_2, LOW);
 
-  digitalWrite(B_IN_1, HIGH);
-  digitalWrite(B_IN_2, LOW);
+    digitalWrite(B_IN_1, HIGH);
+    digitalWrite(B_IN_2, LOW);
 
-  for (int i = 0; i < 4; i++) {
-    ledcWriteTone(CHANNEL_A, startup_notes[i]);
-    ledcWriteTone(CHANNEL_B, startup_notes[i]);
+    for (int i = 0; i < 4; i++) {
+        ledcWriteTone(CHANNEL_A, startup_notes[i]);
+        ledcWriteTone(CHANNEL_B, startup_notes[i]);
+
+        ledcWrite(CHANNEL_A, volume);
+        ledcWrite(CHANNEL_B, volume);
+
+        delay(note_durations[i]);
+
+        ledcWrite(CHANNEL_A, 0);
+        ledcWrite(CHANNEL_B, 0);
+
+        delay(30);
+    }
+
+    full_stop();
+    delay(50);
+
+    ledcSetup(CHANNEL_A, FREQ, 8);
+    ledcSetup(CHANNEL_B, FREQ, 8);
+}
+
+void obstacle_detection(int direction, int radius) {
+    uint32_t now = millis();
+
+    if (now - last_trigger >= trigger_delay) {
+
+        if (direction >= 20 && direction < 160) {
+            last_trigger = now;
     
-    ledcWrite(CHANNEL_A, volume);
-    ledcWrite(CHANNEL_B, volume);
+            unsigned long distance = sonar.ping_cm();
+            is_obstacle_detected = distance > 0 && distance <= radius * distance_to_speed_multiplier;
     
-    delay(note_durations[i]);
-    
-    ledcWrite(CHANNEL_A, 0);
-    ledcWrite(CHANNEL_B, 0);
+            logging("Obstacle distance = %d cm", distance);
+            logging("Is obstacle detected: %s", is_obstacle_detected ? "TRUE" : "FALSE");
+        } else {
+            is_obstacle_detected = false;
+        }
 
-    delay(30);
-  }
-
-  full_stop();
-  delay(50);
-
-  ledcSetup(CHANNEL_A, FREQ, 8);
-  ledcSetup(CHANNEL_B, FREQ, 8); 
+    }
 }
