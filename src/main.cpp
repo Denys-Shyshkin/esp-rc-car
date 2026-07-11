@@ -36,6 +36,10 @@ const int set_control_value = MAX_CONTROL_VALUE / MAX_SPEED_PERCENTAGE;
 int startup_notes[4] = {330, 440, 554, 659};  // E4, A4, C#5, E5
 int note_durations[4] = {150, 150, 150, 300}; // Duration in milliseconds
 
+int direction = 0;
+int radius = 0;
+int speed = 0;
+
 uint32_t last_trigger = 0;
 uint16_t trigger_delay = 50;
 int distance_to_speed_multiplier = 3;
@@ -51,7 +55,9 @@ void logging(const char *fmt, ...);
 void adjust_speed(int speed_a, int speed_b);
 void full_stop();
 void play_startup_tone();
-void obstacle_detection(int direction, int radius);
+void obstacle_detection();
+void inputs_reading();
+void movement_control();
 
 void move_forward();
 void move_backward();
@@ -84,59 +90,9 @@ void setup() {
 void loop() {
     telnet_server();
 
-    // Refresh data obtained from smartphone. Calling this function is mandatory in order to get
-    // data properly from your mobile.
-    Dabble.processInput();
-
-    int direction = GamePad.getAngle(); // 0-360
-    int radius = GamePad.getRadius();   // 0-7
-    int speed = (MAX_DUTY / set_control_value) * radius;
-
-    obstacle_detection(direction, radius);
-
-    if (is_obstacle_detected) {
-        speed = 0;
-    }
-
-    if (direction >= 20 && direction < 70) {
-        move_forward();
-        adjust_speed(speed / 2, speed);
-    }
-
-    if (direction >= 70 && direction < 110) {
-        move_forward();
-        adjust_speed(speed, speed);
-    }
-
-    if (direction >= 110 && direction < 160) {
-        move_forward();
-        adjust_speed(speed, speed / 2);
-    }
-
-    if (direction >= 160 && direction < 200) {
-        turn_left();
-        adjust_speed(speed, speed);
-    }
-
-    if (direction >= 200 && direction < 250) {
-        move_backward();
-        adjust_speed(speed, speed / 2);
-    }
-
-    if (direction >= 250 && direction < 290) {
-        move_backward();
-        adjust_speed(speed, speed);
-    }
-
-    if (direction >= 290 && direction < 340) {
-        move_backward();
-        adjust_speed(speed / 2, speed);
-    }
-
-    if (direction > 340 && direction <= 360 || direction >= 0 && direction < 20) {
-        turn_right();
-        adjust_speed(speed, speed);
-    }
+    inputs_reading();
+    obstacle_detection();
+    movement_control();
 
     // logging("Direction: %d", direction);
 }
@@ -274,22 +230,77 @@ void play_startup_tone() {
     ledcSetup(CHANNEL_B, FREQ, 8);
 }
 
-void obstacle_detection(int direction, int radius) {
+void obstacle_detection() {
     uint32_t now = millis();
 
     if (now - last_trigger >= trigger_delay) {
-
         if (direction >= 20 && direction < 160) {
             last_trigger = now;
-    
+
             unsigned long distance = sonar.ping_cm();
-            is_obstacle_detected = distance > 0 && distance <= radius * distance_to_speed_multiplier;
-    
+            is_obstacle_detected =
+                distance > 0 && distance <= radius * distance_to_speed_multiplier;
+
             logging("Obstacle distance = %d cm", distance);
             logging("Is obstacle detected: %s", is_obstacle_detected ? "TRUE" : "FALSE");
         } else {
             is_obstacle_detected = false;
         }
+    }
 
+    if (is_obstacle_detected) {
+        speed = 0;
+    }
+}
+
+void inputs_reading() {
+    // Refresh data obtained from smartphone. Calling this function is mandatory in order to get
+    // data properly from your mobile.
+    Dabble.processInput();
+
+    direction = GamePad.getAngle(); // 0-360
+    radius = GamePad.getRadius();   // 0-7
+    speed = (MAX_DUTY / set_control_value) * radius;
+}
+
+void movement_control() {
+    if (direction >= 20 && direction < 70) {
+        move_forward();
+        adjust_speed(speed / 2, speed);
+    }
+
+    if (direction >= 70 && direction < 110) {
+        move_forward();
+        adjust_speed(speed, speed);
+    }
+
+    if (direction >= 110 && direction < 160) {
+        move_forward();
+        adjust_speed(speed, speed / 2);
+    }
+
+    if (direction >= 160 && direction < 200) {
+        turn_left();
+        adjust_speed(speed, speed);
+    }
+
+    if (direction >= 200 && direction < 250) {
+        move_backward();
+        adjust_speed(speed, speed / 2);
+    }
+
+    if (direction >= 250 && direction < 290) {
+        move_backward();
+        adjust_speed(speed, speed);
+    }
+
+    if (direction >= 290 && direction < 340) {
+        move_backward();
+        adjust_speed(speed / 2, speed);
+    }
+
+    if (direction > 340 && direction <= 360 || direction >= 0 && direction < 20) {
+        turn_right();
+        adjust_speed(speed, speed);
     }
 }
