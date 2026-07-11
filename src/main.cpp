@@ -4,6 +4,7 @@
 #include <DabbleESP32.h>
 #include <NewPing.h>
 #include <WiFi.h>
+#include <ESP32Servo.h>
 
 const char *ssid = WIFI_SSID;
 const char *password = WIFI_PASS;
@@ -31,6 +32,8 @@ WiFiClient telnetClient;
 #define MAX_SPEED_PERCENTAGE 0.8 // 1 is max (100%)
 #define MAX_CONTROL_VALUE 7
 
+#define SERVO_PIN 17
+
 const int set_control_value = MAX_CONTROL_VALUE / MAX_SPEED_PERCENTAGE;
 
 int startup_notes[4] = {330, 440, 554, 659};  // E4, A4, C#5, E5
@@ -45,7 +48,12 @@ uint16_t trigger_delay = 50;
 int distance_to_speed_multiplier = 3;
 bool is_obstacle_detected = false;
 
+int servo_pos = 90;
+int current_servo_pos = servo_pos;
+
 NewPing sonar(TRIGGER, ECHO);
+
+Servo my_servo;
 
 void init_serial();
 void init_telnet_server();
@@ -58,6 +66,7 @@ void play_startup_tone();
 void obstacle_detection();
 void inputs_reading();
 void movement_control();
+void servo_control();
 
 void move_forward();
 void move_backward();
@@ -73,6 +82,10 @@ void setup() {
     pinMode(A_IN_2, OUTPUT);
     pinMode(B_IN_1, OUTPUT);
     pinMode(B_IN_2, OUTPUT);
+
+    // Init servo signal pin
+    my_servo.attach(SERVO_PIN);
+    my_servo.write(current_servo_pos);
 
     // PWM setup
     ledcSetup(CHANNEL_A, FREQ, RESOLUTION);
@@ -94,7 +107,9 @@ void loop() {
     obstacle_detection();
     movement_control();
 
-    // logging("Direction: %d", direction);
+    servo_control();
+
+    logging("Servo pos: %d", servo_pos);
 }
 
 void init_serial() {
@@ -261,6 +276,16 @@ void inputs_reading() {
     direction = GamePad.getAngle(); // 0-360
     radius = GamePad.getRadius();   // 0-7
     speed = (MAX_DUTY / set_control_value) * radius;
+
+    if (GamePad.isTrianglePressed()) {
+        servo_pos = 90;
+    }
+    if (GamePad.isSquarePressed()) {
+        servo_pos = 180;
+    }
+    if (GamePad.isCirclePressed()) {
+        servo_pos = 0;
+    }
 }
 
 void movement_control() {
@@ -302,5 +327,13 @@ void movement_control() {
     if (direction > 340 && direction <= 360 || direction >= 0 && direction < 20) {
         turn_right();
         adjust_speed(speed, speed);
+    }
+}
+
+void servo_control() {
+    if (current_servo_pos != servo_pos) {
+        current_servo_pos = servo_pos;
+
+        my_servo.write(current_servo_pos);
     }
 }
