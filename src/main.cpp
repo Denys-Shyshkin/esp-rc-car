@@ -269,8 +269,8 @@ void obstacle_detection() {
 }
 
 void inputs_reading() {
-    // Refresh data obtained from smartphone. Calling this function is mandatory in order to get
-    // data properly from your mobile.
+    // Refresh data obtained from smartphone. 
+    // Calling this function is mandatory in order to get data properly from your mobile.
     Dabble.processInput();
 
     direction = GamePad.getAngle(); // 0-360
@@ -281,10 +281,10 @@ void inputs_reading() {
         servo_pos = 90;
     }
     if (GamePad.isSquarePressed()) {
-        servo_pos = 180;
+        servo_pos = 150;
     }
     if (GamePad.isCirclePressed()) {
-        servo_pos = 0;
+        servo_pos = 30;
     }
 }
 
